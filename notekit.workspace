@@ -2,13 +2,13 @@
 <CodeLite_Workspace Name="notekit" Database="" Version="10.0.0">
   <Project Name="notekit" Path="notekit.project" Active="Yes"/>
   <BuildMatrix>
-    <WorkspaceConfiguration Name="Debug" Selected="no">
+    <WorkspaceConfiguration Name="Debug">
       <Environment/>
       <Project Name="notekit" ConfigName="Debug"/>
     </WorkspaceConfiguration>
-    <WorkspaceConfiguration Name="Release" Selected="yes">
+    <WorkspaceConfiguration Name="Release">
       <Environment/>
-      <Project Name="notekit" ConfigName="Release"/>
+      <Project Name="notekit" ConfigName="Debug"/>
     </WorkspaceConfiguration>
   </BuildMatrix>
 </CodeLite_Workspace>

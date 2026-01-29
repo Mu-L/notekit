@@ -9,12 +9,14 @@
 #include "notebook.h"
 #include "navigation.h"
 #include "settings.h"
+#include "findinfiles.h"
 
 enum {
 	WND_ACTION_COLOR,
 	WND_ACTION_NEXT_NOTE,
 	WND_ACTION_PREV_NOTE,
 	WND_ACTION_SHOW_FIND,
+	WND_ACTION_SHOW_FIND_IN_FILES,
 	WND_ACTION_TOGGLE_SIDEBAR,
 	WND_ACTION_TOGGLE_PRESENTATION,
 	WND_ACTION_TOGGLE_MARKDOWN_RENDERING
@@ -96,7 +98,12 @@ protected:
 	
 	/* search bar */
 	Gtk::SearchBar search_bar;
+	Gtk::HBox search_hbox;
+	Gtk::Label search_label;
 	Gtk::SearchEntry search_entry;
+	
+	bool is_find_in_files;
+	CFindInFiles fif;
 	
 	/* tool palette */
 	Glib::RefPtr<Gtk::Builder> toolbar_builder;

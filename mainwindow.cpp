@@ -28,7 +28,7 @@
 #include <gdk/gdkwayland.h>
 #endif
 
-CMainWindow::CMainWindow(const Glib::RefPtr<Gtk::Application>& app) : Gtk::ApplicationWindow(app), nav_model(), sview()
+CMainWindow::CMainWindow(const Glib::RefPtr<Gtk::Application>& app) : Gtk::ApplicationWindow(app), nav_model(), sview(), fif()
 {
 	// Determine paths to operate on.
 	CalculatePaths();
@@ -145,7 +145,11 @@ CMainWindow::CMainWindow(const Glib::RefPtr<Gtk::Application>& app) : Gtk::Appli
 	search_entry.signal_previous_match().connect( sigc::mem_fun(this, &CMainWindow::on_search_prev) );
 	search_entry.signal_stop_search().connect( sigc::mem_fun(this, &CMainWindow::on_search_stop) );
 	search_entry.signal_focus_out_event().connect( sigc::mem_fun(this, &CMainWindow::on_search_lost_focus) ); 
-	search_bar.add( search_entry );
+	search_label.set_text("Find:  ");
+	search_hbox.add( search_label );
+	search_hbox.add( search_entry );
+	search_bar.add( search_hbox );
+	search_bar.connect_entry( search_entry );
 	doc_view_box.pack_start( search_bar, Gtk::PACK_SHRINK );
 	
 	split.pack_start( doc_view_box );
@@ -162,6 +166,7 @@ CMainWindow::CMainWindow(const Glib::RefPtr<Gtk::Application>& app) : Gtk::Appli
 	ACTION("next-note",WND_ACTION_NEXT_NOTE,1);
 	ACTION("prev-note",WND_ACTION_PREV_NOTE,1);
 	ACTION("show-find",WND_ACTION_SHOW_FIND,1);
+	ACTION("show-find-in-files",WND_ACTION_SHOW_FIND_IN_FILES,1);
 	
 	/* add the top-level layout */
 	Glib::RefPtr<Gio::Menu> legacy = Gio::Menu::create();
@@ -585,16 +590,16 @@ void CMainWindow::FetchAndExport()
 
 void CMainWindow::OpenDocument(std::string filename) {
 	FetchAndSave();
+	// this triggers a recursive call to to SettingDocumentUpdate, which performs the actual loading
 	settings->set_string("active-document", filename);
 }
 
 /* set apparent opened document filename without actually loading/unload anything */
 void CMainWindow::SetupDocumentWindow(Glib::ustring filename) {
-	active_document = filename;
 	selected_document = filename;
-	set_title(active_document + " - NoteKit");
+	set_title(filename + " - NoteKit");
 	hbar.set_title("NoteKit");
-	hbar.set_subtitle(active_document);
+	hbar.set_subtitle(filename);
 }
 
 /* follow a link clicked in a document */
@@ -662,6 +667,15 @@ void CMainWindow::on_action(std::string name, int type, int param)
 		nav_model.PrevDoc();
 		break;
 	case WND_ACTION_SHOW_FIND:
+		is_find_in_files = false;
+		search_label.set_text("Find:  ");
+		search_entry.set_text("");
+		search_bar.set_search_mode();
+		search_entry.grab_focus();
+		break;
+	case WND_ACTION_SHOW_FIND_IN_FILES:
+		is_find_in_files = true;
+		search_label.set_text("Find in files:  ");
 		search_entry.set_text("");
 		search_bar.set_search_mode();
 		search_entry.grab_focus();
@@ -708,6 +722,7 @@ void CMainWindow::SettingDocumentUpdate() {
 	if (filename == "") {
 		sview.set_editable(false);
 		sview.set_can_focus(false);
+		active_document="";
 		SetupDocumentWindow("");
 		sbuffer->begin_not_undoable_action();
 		sbuffer->set_text("( Nothing opened. Please create or open a file. ) ");
@@ -736,6 +751,7 @@ void CMainWindow::SettingDocumentUpdate() {
 			sbuffer->deserialize(sbuffer,"text/notekit-markdown",i,(guint8*)buf,length);
 		sbuffer->end_not_undoable_action();
 
+		active_document=filename;
 		SetupDocumentWindow(filename);
 
 		g_free(buf);
@@ -743,6 +759,7 @@ void CMainWindow::SettingDocumentUpdate() {
 		sview.set_editable(false);
 		sview.set_can_focus(false);
 		fprintf(stderr,"Error: Failed to load document %s!\n",filename.c_str());
+		active_document="";
 		SetupDocumentWindow("");
 		sbuffer->begin_not_undoable_action();
 		char error_msg[512];
@@ -870,6 +887,8 @@ bool CMainWindow::on_idle()
 
 void CMainWindow::on_search_text_changed()
 {
+	if(is_find_in_files) return;
+	
 	const Glib::ustring text = search_entry.get_text();
 	
 	if(!text.empty()) {
@@ -883,28 +902,56 @@ void CMainWindow::on_search_text_changed()
 /* intercept (shift)-return here, easier than figuring out how to set up a hotkey \neq the default ctrl-g */
 bool CMainWindow::on_search_key_press(GdkEventKey* event)
 {
-	if(event->keyval == GDK_KEY_Return) {
-		if(event->state & GDK_SHIFT_MASK) 
-			on_search_prev();
-		else on_search_next();
+	if(!is_find_in_files) {
+		if(event->keyval == GDK_KEY_Return) {
+			if(event->state & GDK_SHIFT_MASK) 
+				on_search_prev();
+			else on_search_next();
+		}
+	} else {
+		if(event->keyval == GDK_KEY_Return) {
+			on_search_next();
+		}
 	}
 	return false;
 }
 
 void CMainWindow::on_search_next()
 {
-	const Glib::ustring text = search_entry.get_text();
-	
-	if(!text.empty()) {
-		if(sview.Find(text, true, true))
-			search_entry.set_icon_from_icon_name("emblem-ok-symbolic",Gtk::ENTRY_ICON_SECONDARY);
-		else
-			search_entry.set_icon_from_icon_name("window-close-symbolic",Gtk::ENTRY_ICON_SECONDARY);
+	if(is_find_in_files) {
+		const Glib::ustring text = search_entry.get_text();
+		
+		nav_model.ExpandAndSelect("");
+		OpenDocument("");
+		SetupDocumentWindow("Find in Files");
+		sbuffer->begin_not_undoable_action();
+		sbuffer->set_text("");
+		sbuffer->end_not_undoable_action();
+		
+		fif.SetResultCallback([this](std::string res) {
+			if(active_document!="") return false;
+			
+			sbuffer->insert(sbuffer->get_iter_at_offset(-1), res);
+			
+			return true;
+		} );
+		fif.StartSearch(nav_model.base, text);
+	} else {
+		const Glib::ustring text = search_entry.get_text();
+		
+		if(!text.empty()) {
+			if(sview.Find(text, true, true))
+				search_entry.set_icon_from_icon_name("emblem-ok-symbolic",Gtk::ENTRY_ICON_SECONDARY);
+			else
+				search_entry.set_icon_from_icon_name("window-close-symbolic",Gtk::ENTRY_ICON_SECONDARY);
+		}
 	}
 }
 
 void CMainWindow::on_search_prev()
 {
+	if(is_find_in_files) return;
+	
 	const Glib::ustring text = search_entry.get_text();
 	
 	if(!text.empty()) {

@@ -52,7 +52,8 @@ src = [
 	'mainwindow.cpp',
 	'navigation.cpp',
 	'notebook.cpp',
-	'settings.cpp'
+	'settings.cpp',
+    'findinfiles.cpp'
 ]
 
 if meson.version().version_compare('>=0.56.0')
